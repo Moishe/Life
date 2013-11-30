@@ -1,5 +1,5 @@
-function startLife() {
-    var life = new Life();
+function startLife(board) {
+    var life = new Life(board);
     life.render();
 
     setInterval(function() {
