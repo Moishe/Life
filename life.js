@@ -10,7 +10,12 @@ function showGenerations(life, generationsToCompute) {
   setInterval(function() {
     if (!generationsToCompute || generation++ < generationsToCompute) {
       life.nextGeneration();
-      life.render();
+      life.drawDiff();
+    } else {
+      if (life.reverseDiffHistory) {
+        life.diff = life.reverseDiffHistory.pop();
+        life.drawDiff();
+      }
     }
   }, 10);
 }
@@ -40,6 +45,8 @@ Life = function(board) {
   this.liveCellColor = 'grey';
   this.shouldAutoScale = true;
   this.shouldRememberHistory = false;
+  this.diffHistory = [];
+  this.reverseDiffHistory = [];
 };
 
 Life.prototype.rememberHistory = function(shouldRememberHistory) {
@@ -60,8 +67,12 @@ Life.prototype.autoScale = function(shouldAutoScale) {
 Life.prototype.setLiveCellColor = function(liveCellColor) {
   this.liveCellColor = liveCellColor;
   return this;
-}
+};
 
+Life.prototype.setTemplate = function(template) {
+  this.template = template;
+  return this;
+};
 
 Life.prototype.addCoordinateToBoard = function(coord) {
   this.board[JSON.stringify(coord)] = true;
@@ -71,6 +82,7 @@ Life.prototype.render = function() {
   var canvas = $('#board').get(0);
   var ctx = canvas.getContext('2d');
 
+  var changedScale = false;
   if (this.shouldAutoScale) {
     // First, determine the scale.
     for (var coord in this.board) {
@@ -92,20 +104,20 @@ Life.prototype.render = function() {
         this.size *= 2;
       }
       ctx.clearRect(0,0,1024,1024);
+      changedScale = true;
     }
     this.scale = 1024 / this.size;
-    console.log('size: ' + this.size);
-    console.log('scale: ' + this.scale);
   }
 
-
-  this.drawBoard(this.oldboard, this.scale, ctx, true);
-  this.drawBoard(this.board, this.scale, ctx, false);
+  if (!changedScale) {
+    this.drawBoard(this.oldboard, this.scale, ctx, true);
+  }
+  this.drawBoard(this.board, this.scale, ctx, false);    
 };
 
 Life.prototype.drawBoard = function(board, scale, ctx, clear) {
   for (var coord in board) {
-    console.log(coord);
+    var origcoord = coord;
     coord = JSON.parse(coord);
     coord[0] += this.size / 2;
     coord[1] += this.size / 2;
@@ -121,7 +133,13 @@ Life.prototype.drawBoard = function(board, scale, ctx, clear) {
                     cellSize,
                     cellSize);
     } else {
-      ctx.fillStyle = this.liveCellColor;
+      var color;
+      if (this.template && this.template[origcoord]) {
+        color = this.template[origcoord];
+      } else {
+        color = this.liveCellColor;
+      }
+      ctx.fillStyle = color;
       ctx.fillRect(coord[0] * scale,
                    coord[1] * scale,
                    cellSize,
@@ -129,6 +147,44 @@ Life.prototype.drawBoard = function(board, scale, ctx, clear) {
     }
   }
 }
+
+Life.prototype.drawDiff = function() {
+  var canvas = $('#board').get(0);
+  var ctx = canvas.getContext('2d');
+
+  for (var coord in this.diff) {
+    var origcoord = coord;
+    coord = JSON.parse(coord);
+    coord[0] += this.size / 2;
+    coord[1] += this.size / 2;
+    var cellSize;
+    if (this.scale > 8) {
+      cellSize = this.scale - 4;
+    } else {
+      cellSize = this.scale;
+    }
+    if (this.diff[origcoord] == true) {
+      var color;
+      if (this.template && this.template[origcoord]) {
+        debugger;
+        color = this.template[origcoord];
+      } else {
+        color = this.liveCellColor;
+      }
+      ctx.fillStyle = color;
+      ctx.fillRect(coord[0] * this.scale,
+                   coord[1] * this.scale,
+                   cellSize,
+                   cellSize);
+    } else {
+      ctx.clearRect(coord[0] * this.scale,
+                    coord[1] * this.scale,
+                    cellSize,
+                    cellSize);
+    }
+  }
+}
+
 
 Life.prototype.nextGeneration = function() {
   var cellsToEval = {};
@@ -149,7 +205,6 @@ Life.prototype.nextGeneration = function() {
   }
 
   var newboard = {};
-
   for (var coord in cellsToEval) {
     if (cellsToEval[coord] == 2) {
       if (coord in this.board) {
@@ -160,6 +215,30 @@ Life.prototype.nextGeneration = function() {
     }
   }
 
+  this.diff = this.computeDiff(this.board, newboard);
+
+  if (this.shouldRememberHistory) {
+    this.diffHistory.push(this.diff);
+    this.reverseDiffHistory.push(this.computeDiff(newboard, this.board));
+  }
+
   this.oldboard = this.board;
   this.board = newboard;
 }
+
+Life.prototype.computeDiff = function(board1, board2) {
+  var diff = {};
+  for (var coord in board2) {
+    if (board1[coord]) {
+      diff[coord] = true;
+    }
+  }
+  
+  for (var coord in board1) {
+    if (!board2[coord]) {
+      diff[coord] = false;
+    }
+  }
+
+  return diff;
+};
